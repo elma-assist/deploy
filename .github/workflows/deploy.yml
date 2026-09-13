@@ -21,7 +21,7 @@ jobs:
   validate:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - run: bash -n bootstrap/elma-deploy-latest scripts/deploy.sh scripts/backup.sh
       - name: Validate Compose
         run: |
@@ -58,7 +58,7 @@ jobs:
           RELEASE_VERSION: ${{ github.event.release.tag_name || inputs.version }}
         run: |
           printf '%s' "$GHCR_TOKEN" | ssh -o BatchMode=yes "deploy@$DEPLOY_HOST" \
-            "set -e; docker login ghcr.io --username '$GHCR_USER' --password-stdin >/dev/null; trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT; /usr/local/sbin/elma-deploy-latest '$RELEASE_VERSION'"
+            "set -e; docker_config=\$(mktemp -d); trap 'rm -rf \"\$docker_config\"' EXIT; export DOCKER_CONFIG=\"\$docker_config\"; docker login ghcr.io --username '$GHCR_USER' --password-stdin >/dev/null; /usr/local/sbin/elma-deploy-latest '$RELEASE_VERSION'"
       - name: Remove deployment key
         if: always()
         run: rm -f ~/.ssh/id_ed25519
