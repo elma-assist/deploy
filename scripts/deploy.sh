@@ -19,9 +19,7 @@ compose=(docker compose --env-file "$shared/runtime.env" -f "$release/compose.ya
 "${compose[@]}" config --quiet
 "${compose[@]}" pull
 
-if [[ -x "$root/current/scripts/backup.sh" ]]; then
-  "$root/current/scripts/backup.sh"
-fi
+"$release/scripts/backup.sh" "$release"
 
 "${compose[@]}" up -d --wait --wait-timeout 240 --remove-orphans
 for domain in elma-assist.de rtc.elma-assist.de files.elma-assist.de; do
