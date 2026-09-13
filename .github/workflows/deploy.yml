@@ -15,6 +15,7 @@ on:
 
 permissions:
   contents: read
+  packages: read
 
 jobs:
   validate:
@@ -52,10 +53,12 @@ jobs:
       - name: Deploy release
         env:
           DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
           RELEASE_VERSION: ${{ github.event.release.tag_name || inputs.version }}
         run: |
-          ssh -o BatchMode=yes "deploy@$DEPLOY_HOST" \
-            "/usr/local/sbin/elma-deploy-latest '$RELEASE_VERSION'"
+          printf '%s' "$GHCR_TOKEN" | ssh -o BatchMode=yes "deploy@$DEPLOY_HOST" \
+            "set -e; docker login ghcr.io --username '$GHCR_USER' --password-stdin >/dev/null; trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT; /usr/local/sbin/elma-deploy-latest '$RELEASE_VERSION'"
       - name: Remove deployment key
         if: always()
         run: rm -f ~/.ssh/id_ed25519
