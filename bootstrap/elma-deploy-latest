@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# Stable server-side launcher. With no argument, deploys the latest stable GitHub Release.
+set -Eeuo pipefail
+umask 077
+root=/opt/elma
+repository="$root/deploy"
+remote=https://github.com/elma-assist/deploy.git
+requested=${1:-}
+
+exec 9>"$root/deploy.lock"
+flock -n 9 || { echo 'Another deployment is running'; exit 1; }
+
+if [[ ! -d "$repository/.git" ]]; then
+  git clone --filter=blob:none "$remote" "$repository"
+fi
+[[ -z "$(git -C "$repository" status --porcelain)" ]] || {
+  echo "Refusing to update a modified deployment checkout" >&2
+  exit 1
+}
+git -C "$repository" pull --ff-only origin main
+git -C "$repository" fetch --force --tags origin
+
+if [[ -z "$requested" ]]; then
+  requested=$(
+    curl --fail --silent --show-error \
+      https://api.github.com/repos/elma-assist/deploy/releases/latest |
+      python3 -c 'import json,sys; print(json.load(sys.stdin)["tag_name"])'
+  )
+fi
+[[ "$requested" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]] || {
+  echo "Invalid release version: $requested" >&2
+  exit 2
+}
+commit=$(git -C "$repository" rev-parse --verify "refs/tags/$requested^{commit}")
+release="$root/releases/$requested"
+
+if [[ -d "$release" ]]; then
+  [[ "$(cat "$release/DEPLOY_COMMIT")" == "$commit" ]] || {
+    echo "Release tag $requested no longer matches its deployed commit" >&2
+    exit 1
+  }
+else
+  staging=$(mktemp -d "$root/releases/.${requested}.XXXXXX")
+  trap 'rmdir "$staging" 2>/dev/null || true' EXIT
+  git -C "$repository" archive "$requested" | tar -x -C "$staging"
+  printf '%s\n' "$commit" > "$staging/DEPLOY_COMMIT"
+  mv "$staging" "$release"
+  trap - EXIT
+fi
+
+exec "$release/scripts/deploy.sh" "$requested"
